@@ -17,12 +17,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type Server struct {
-	Conns map[*websocket.Conn]bool
+	Peers map[string]*websocket.Conn
 }
 
 func NewServer() *Server {
 	return &Server{
-		Conns: make(map[*websocket.Conn]bool),
+		Peers: make(map[string]*websocket.Conn),
 	}
 }
 
@@ -37,38 +37,48 @@ func GetClientIP(r *http.Request) string {
 	return ip
 }
 
-func (s *Server) ReadLoop(conn *websocket.Conn) {
+func (s *Server) ReadLoop(peerId string, conn *websocket.Conn) {
+	defer conn.Close()
+
 	for {
+		if s.Peers[peerId] != conn {
+			log.Println("Closing the conn ", conn)
+			return
+		}
 		_, data, err := conn.ReadMessage()
 
 		if err != nil {
 			log.Println("Conn closed ", err.Error())
-			delete(s.Conns, conn)
+			delete(s.Peers, peerId)
 			return
 		}
 
-		log.Printf("Remote addr %s\n", conn.RemoteAddr())
 		log.Printf("Received - %s\n", string(data))
 	}
 }
 
 func (s *Server) HandlePeerJoin(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	peerId := r.URL.Query().Get("peerId")
+	if peerId == "" {
+		log.Println("Peer id empty ")
+		return
+	}
 
+	log.Println("Peer id ", peerId)
+
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Error upgrading the connection ", err.Error())
 		return
 	}
 
-	if _, exists := s.Conns[conn]; exists {
-		return
+  if oldConn,exist := s.Peers[peerId];exist {
+		log.Println("Closing old connection for peer", peerId)
+		oldConn.Close()
 	}
 
-	log.Println("Client ip", GetClientIP(r))
-
-	s.Conns[conn] = true
-
-	go s.ReadLoop(conn)
+	s.Peers[peerId] = conn
+	go s.ReadLoop(peerId, conn)
 }
 
 func (s *Server) HandlePeerConns(w http.ResponseWriter, r *http.Request) {
@@ -84,20 +94,20 @@ func (s *Server) HandlePeerConns(w http.ResponseWriter, r *http.Request) {
 
 	var peers []string
 
-	for k := range s.Conns {
-		peers = append(peers, k.RemoteAddr().String())
+	for peer := range s.Peers {
+		peers = append(peers, peer)
 	}
 
 	log.Println(peers)
 
 	if err := json.NewEncoder(w).Encode(peers); err != nil {
-     log.Println(err)
+		log.Println(err)
 	}
 }
 
 func main() {
-	s := NewServer() 
-	http.HandleFunc("/ws", s.HandlePeerJoin)   
+	s := NewServer()
+	http.HandleFunc("/ws", s.HandlePeerJoin)
 	http.HandleFunc("/conns", s.HandlePeerConns)
 
 	log.Fatal(http.ListenAndServe("localhost:6969", nil))
