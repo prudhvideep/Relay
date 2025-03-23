@@ -9,7 +9,7 @@ export default defineConfig({
     allowedHosts: ['.ngrok-free.app'],
     host:true,
     watch : {
-      ignored : ["Server/**"]
+      ignored: ['**/Server/**']
     }
   }
 })

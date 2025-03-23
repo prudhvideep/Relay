@@ -3,9 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net"
 	"net/http"
-	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -17,43 +16,109 @@ var upgrader = websocket.Upgrader{
 }
 
 type Server struct {
+	mu    sync.Mutex
 	Peers map[string]*websocket.Conn
+}
+
+type Message struct {
+	MessageType string   `json:"type"`
+	SrcPid      string   `json:"srcId"`
+	DstPid      string   `json:"dstId"`
+	Offer       string   `json:"offer"`
+	Answer      string   `json:"answer"`
+	Peers       []string `json:"peers"`
 }
 
 func NewServer() *Server {
 	return &Server{
+		mu:    sync.Mutex{},
 		Peers: make(map[string]*websocket.Conn),
 	}
 }
 
-func GetClientIP(r *http.Request) string {
-	forwarded := r.Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		ips := strings.Split(forwarded, ",")
-		return strings.TrimSpace(ips[0])
+func (s *Server) AddPeer(peerId string, conn *websocket.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if oldConn, exists := s.Peers[peerId]; exists {
+		oldConn.Close()
 	}
 
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
+	s.Peers[peerId] = conn
+	s.SignalPeers(peerId)
+}
+
+func (s *Server) RemovePeer(peerId string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.Peers, peerId)
+	s.BroadcastPeerList()
+}
+
+// This method signals the other peers that a new peer got added
+func (s *Server) SignalPeers(newPeerId string) {
+	for peerId, conn := range s.Peers {
+		if peerId != newPeerId {
+			msg := Message{
+				MessageType: "signal",
+				SrcPid:      newPeerId,
+			}
+
+			msgJson, err := json.Marshal(msg)
+			if err != nil {
+				log.Println("error marshalling signal message for peer ", newPeerId)
+				return
+			}
+
+			conn.WriteMessage(websocket.TextMessage, msgJson)
+		}
+	}
+}
+
+func (s *Server) BroadcastPeerList() {
+	msg := Message{
+		MessageType: "broadcast",
+		Peers:       make([]string, 0),
+	}
+
+	for peerId := range s.Peers {
+		msg.Peers = append(msg.Peers, peerId)
+	}
+
+	msgJson, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("error marshalling broadcast data")
+		return
+	}
+
+	for _, conn := range s.Peers {
+		conn.WriteMessage(websocket.TextMessage, msgJson)
+	}
 }
 
 func (s *Server) ReadLoop(peerId string, conn *websocket.Conn) {
 	defer conn.Close()
 
 	for {
-		if s.Peers[peerId] != conn {
-			log.Println("Closing the conn ", conn)
-			return
-		}
 		_, data, err := conn.ReadMessage()
 
 		if err != nil {
 			log.Println("Conn closed ", err.Error())
-			delete(s.Peers, peerId)
+			s.RemovePeer(peerId)
 			return
 		}
 
 		log.Printf("Received - %s\n", string(data))
+		var sigMsg Message
+		err = json.Unmarshal(data, &sigMsg)
+		if err != nil {
+			log.Println("error unmarshalling the error message")
+		}
+
+		if dstConn, exists := s.Peers[sigMsg.DstPid]; exists {
+			dstConn.WriteMessage(websocket.TextMessage, data)
+		}
 	}
 }
 
@@ -61,6 +126,7 @@ func (s *Server) HandlePeerJoin(w http.ResponseWriter, r *http.Request) {
 	peerId := r.URL.Query().Get("peerId")
 	if peerId == "" {
 		log.Println("Peer id empty ")
+		http.Error(w, "peer id is empty", http.StatusBadRequest)
 		return
 	}
 
@@ -72,43 +138,13 @@ func (s *Server) HandlePeerJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  if oldConn,exist := s.Peers[peerId];exist {
-		log.Println("Closing old connection for peer", peerId)
-		oldConn.Close()
-	}
-
-	s.Peers[peerId] = conn
+	s.AddPeer(peerId, conn)
 	go s.ReadLoop(peerId, conn)
-}
-
-func (s *Server) HandlePeerConns(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Requested-With")
-
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	var peers []string
-
-	for peer := range s.Peers {
-		peers = append(peers, peer)
-	}
-
-	log.Println(peers)
-
-	if err := json.NewEncoder(w).Encode(peers); err != nil {
-		log.Println(err)
-	}
 }
 
 func main() {
 	s := NewServer()
 	http.HandleFunc("/ws", s.HandlePeerJoin)
-	http.HandleFunc("/conns", s.HandlePeerConns)
 
 	log.Fatal(http.ListenAndServe("localhost:6969", nil))
 }
