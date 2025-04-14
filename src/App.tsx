@@ -1,19 +1,54 @@
 import {
   ReactFlow,
   Background,
-  Controls,
   useNodesState,
   Node,
+  Controls,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
 import { Message } from "./types/types";
 import { useState } from "react";
+import PeerNode from "./nodes/PeerNode";
 import { faker } from "@faker-js/faker";
+import { FaBell, FaPaperPlane, FaVideo } from "react-icons/fa";
+import { IoCall, IoChatbubble } from "react-icons/io5";
 
 let peerId: string = "";
+let incomingFileData: any = null;
 const peerMap = new Map<string, RTCPeerConnection>();
 const channelMap = new Map<string, RTCDataChannel>();
+
+const nodeTypes = { peerNode: PeerNode };
+
+const generatePeerName = () => faker.animal.type() + "-" + faker.color.human();
+
+const handleFileTransfer = (file: File, id: string) => {
+  // console.log("File transferring");
+  // console.log("File ---> ", file);
+  // console.log("id ----> ", id);
+  // console.log("Channel map ", channelMap);
+
+  const channel = channelMap.get(id);
+
+  if (channel && channel.readyState === "open") {
+    console.log("Channel is open, sending file");
+
+    const metaData = {
+      type: "file-meta",
+      name: file.name,
+      size: file.size,
+      mimeType: file.type,
+    };
+
+    channel.send(JSON.stringify(metaData));
+    file.arrayBuffer().then((buffer) => {
+      channel.send(buffer);
+    });
+  } else {
+    console.log("Channel not ready, cannot send file");
+  }
+};
 
 const peerConfig: RTCConfiguration = {
   iceServers: [
@@ -26,10 +61,8 @@ const peerConfig: RTCConfiguration = {
   ],
 };
 
-const generatePeerName = () => faker.animal.type() + "-" + faker.color.human(); 
-
 if (!sessionStorage.getItem("peerId")) {
-  peerId = generatePeerName()
+  peerId = generatePeerName();
 
   if (peerId) {
     sessionStorage.setItem("peerId", peerId);
@@ -38,7 +71,9 @@ if (!sessionStorage.getItem("peerId")) {
   peerId = sessionStorage.getItem("peerId") || "";
 }
 
-const ws = new WebSocket(`ws://localhost:6969/ws?peerId=${peerId}`);
+const ws = new WebSocket(
+  `wss://${import.meta.env.VITE_BASE_SERVER}/ws?peerId=${peerId}`
+);
 
 ws.onopen = () => {
   console.log("Connected to the signal server");
@@ -49,17 +84,32 @@ function App() {
   const [messages, setMessages] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
 
+  function getRandomInt(min: number, max: number): number {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
   if (!peerMap.has(peerId)) {
     peerMap.set(peerId, new RTCPeerConnection(peerConfig));
 
-    setNodes((prev) => [
-      ...prev,
-      {
-        id: `self`,
-        position: { x: 300, y: 300 },
-        data: { label: peerId },
-      },
-    ]);
+    setNodes((prev) => {
+      const selfNodeExists = prev.some((node) => node.id === "self");
+
+      if (!selfNodeExists) {
+        return [
+          ...prev,
+          {
+            id: `self`,
+            position: { x: 300, y: 300 },
+            data: { label: peerId, fileTransfer: handleFileTransfer },
+            type: "peerNode",
+          },
+        ];
+      }
+
+      return prev;
+    });
   }
 
   function UpdatePeerList(peers: string[]) {
@@ -80,13 +130,27 @@ function App() {
       }
     }
 
-    setNodes(() =>
-      [...peerSet.values()].map((peerId: string, idx: number) => ({
-        id: `peer-${idx}`,
-        position: { x: Math.random() * 100, y: 300 },
-        data: { label: peerId },
-      }))
-    );
+    const newNodes = [...peerSet.values()].map((pId: string) => {
+      if (pId === peerId) {
+        return {
+          id: "self",
+          position: { x: 300, y: 300 },
+          data: { label: pId, fileTransfer: handleFileTransfer },
+          type: "peerNode",
+        };
+      } else {
+        return {
+          id: `peer-${pId}`,
+          position: { x: getRandomInt(100, 300), y: getRandomInt(100, 300) },
+          data: { label: pId, fileTransfer: handleFileTransfer },
+          type: "peerNode",
+        };
+      }
+    });
+
+    console.log("new nodes ---> ", newNodes);
+
+    setNodes(newNodes);
   }
 
   function HandleSignalMessage(srcId: string) {
@@ -100,8 +164,43 @@ function App() {
       dataChannel.onopen = () => console.log("data channel opened");
 
       dataChannel.onmessage = (event) => {
-        setMessages((prev) => [...prev, `${srcId}: ${event.data}`]);
+        if (typeof event.data === "string") {
+          try {
+            const metadata = JSON.parse(event.data);
+            if (metadata.type === "file-meta") {
+              incomingFileData = metadata;
+            } else {
+              console.log("Received text message:", metadata);
+            }
+          } catch (e) {
+            console.error("Invalid JSON", e);
+          }
+        } else if (
+          event.data instanceof ArrayBuffer ||
+          event.data instanceof Blob
+        ) {
+          if (incomingFileData) {
+            const blob = new Blob([event.data], {
+              type: incomingFileData.mimeType,
+            });
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = incomingFileData.name || "received_file";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            URL.revokeObjectURL(url);
+            incomingFileData = null;
+          }
+        } else {
+          console.warn("Received file data before metadata");
+        }
       };
+
+      dataChannel.onclose = () => console.log("data channel closed");
 
       conn.onicecandidate = (event) => {
         if (event.candidate) {
@@ -119,8 +218,9 @@ function App() {
         ...prev,
         {
           id: srcId,
-          position: { x: Math.random() * 100, y: 300 },
-          data: { label: srcId },
+          position: { x: getRandomInt(100, 300), y: getRandomInt(100, 300) },
+          data: { label: srcId, fileTransfer: handleFileTransfer },
+          type: "peerNode",
         },
       ]);
 
@@ -155,8 +255,43 @@ function App() {
 
         dataChannel.onopen = () => console.log("data channel opened");
         dataChannel.onmessage = (event) => {
-          setMessages((prev) => [...prev, `${srcId}: ${event.data}`]);
+          if (typeof event.data === "string") {
+            try {
+              const metadata = JSON.parse(event.data);
+              if (metadata.type === "file-meta") {
+                incomingFileData = metadata;
+              } else {
+                console.log("Received text message:", metadata);
+              }
+            } catch (e) {
+              console.error("Invalid JSON", e);
+            }
+          } else if (
+            event.data instanceof ArrayBuffer ||
+            event.data instanceof Blob
+          ) {
+            if (incomingFileData) {
+              const blob = new Blob([event.data], {
+                type: incomingFileData.mimeType,
+              });
+
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = incomingFileData.name || "received_file";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+
+              URL.revokeObjectURL(url);
+              incomingFileData = null;
+            }
+          } else {
+            console.warn("Received file data before metadata");
+          }
         };
+
+        dataChannel.onclose = () => console.log("data channel closed");
       };
 
       setNodes((prev) => [
@@ -164,7 +299,8 @@ function App() {
         {
           id: srcId,
           position: { x: 300, y: 300 },
-          data: { label: srcId },
+          data: { label: srcId, fileTransfer: handleFileTransfer },
+          type: "peerNode",
         },
       ]);
     }
@@ -243,7 +379,9 @@ function App() {
       console.log("Channel state ", channel.readyState);
 
       if (channel.readyState === "open") {
-        channel.send(inputMessage);
+        channel.send(
+          JSON.stringify({ type: "message", message: inputMessage })
+        );
       }
     });
 
@@ -252,41 +390,60 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen h-screen w-full flex flex-col">
-      <div className="w-full h-[70%]">
+    <div className="min-h-screen h-screen flex flex-row bg-[#252423]">
+      <div className="w-full md:w-[70%] lg:w-[80%] h-full bg-[#2f2e2d]">
         <ReactFlow
           nodes={nodes}
+          nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           proOptions={{ hideAttribution: true }}
           fitView
         >
-          <Background />
+          <Background color="#ffa828" />
           <Controls />
         </ReactFlow>
       </div>
 
-      <div className="flex-1 p-4 border-t">
-        <div className="h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto mb-4">
-            {messages.map((msg, i) => (
-              <div key={i} className="mb-2">
-                {msg}
-              </div>
-            ))}
+      <div className="hidden md:flex w-[30%] lg:w-[20%] p-4 bg-[#282928]">
+        <div className="h-full w-full flex flex-col">
+          <div className="flex flex-row justify-end items-center gap-2">
+            <IoChatbubble className="p-1 rounded-md bg-[#413422] text-[#ffa828] text-2xl hover:cursor-pointer" />
+            <FaBell className="p-1 rounded-md  text-[#ffa828] text-2xl hover:cursor-pointer" />
+            <IoCall className="p-1 rounded-md  text-[#ffa828] text-2xl hover:cursor-pointer" />
+            <FaVideo className="p-1 rounded-md  text-[#ffa828] text-2xl hover:cursor-pointer" />
+          </div>
+          <div className="mt-4 messages flex-1 overflow-y-auto mb-4 place-items-end">
+            {messages.map((msg, i) =>
+              msg.split(":")[0] === "You" ? (
+                <div
+                  key={i}
+                  className="mb-2 p-1 pl-2 rounded-md w-[90%] bg-[#413422] text-[#ffa828] font-me text-pretty break-words"
+                >
+                  {msg}
+                </div>
+              ) : (
+                <div
+                  key={i}
+                  className="mb-2 p-1 pl-2 rounded-md w-[90%] bg-[#384027] text-[#b7ff54] text-pretty break-words"
+                >
+                  {msg}
+                </div>
+              )
+            )}
           </div>
           <div className="flex gap-2">
             <input
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              className="flex-1 border p-2"
+              className="flex-1 bg-[#413422] p-2 rounded-md outline-none text-[#ffa828]"
               onKeyPress={(e) => e.key === "Enter" && sendMessage()}
             />
             <button
               onClick={sendMessage}
-              className="bg-blue-500 text-white px-4 py-2 rounded"
+              className="bg-[#413422] text-white px-4 py-2 rounded-full hover:scale-110 hover:cursor-pointer"
             >
-              Send
+              <FaPaperPlane className="text-[#ffa828]" />
             </button>
           </div>
         </div>

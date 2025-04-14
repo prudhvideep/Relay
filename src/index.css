@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+.messages {
+  scrollbar-width: thin;
+  scrollbar-color: #fcecd3 transparent;
+}
+
+.custom-minimap {
+  background-color: #2f2e2d;
+  border: 1px solid #ffa828;
+  opacity: 0.9;
+}
+
+.minimap-self-node {
+  fill: #ffa828;
+  stroke: #ffa828;
+}
+
+.minimap-peer-node {
+  fill: #384027;
+  stroke: #b7ff54;
+}
