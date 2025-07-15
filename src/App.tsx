@@ -7,7 +7,6 @@ import {
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
-import { Message } from "./types/types";
 import { useState } from "react";
 import PeerNode from "./nodes/PeerNode";
 import { faker } from "@faker-js/faker";
@@ -15,10 +14,6 @@ import { FaBell, FaPaperPlane, FaVideo } from "react-icons/fa";
 import { IoCall, IoChatbubble } from "react-icons/io5";
 
 let peerId: string = "";
-let incomingFileData: any = null;
-const peerMap = new Map<string, RTCPeerConnection>();
-const channelMap = new Map<string, RTCDataChannel>();
-
 const nodeTypes = { peerNode: PeerNode };
 
 const generatePeerName = () => faker.animal.type() + "-" + faker.color.human();
@@ -34,8 +29,8 @@ if (!sessionStorage.getItem("peerId")) {
 }
 
 function App() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [messages, setMessages] = useState<string[]>([]);
+  const [nodes, _, onNodesChange] = useNodesState<Node>([]);
+  const [messages] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
 
 
