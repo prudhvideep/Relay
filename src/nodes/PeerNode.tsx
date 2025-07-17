@@ -1,17 +1,58 @@
-import { Handle, Position } from "@xyflow/react";
-import { useRef } from "react";
+import Peer from "../core/Peer";
+import { useRef, useState } from "react";
+import { sendOffer } from "../core/signal";
+import { FileMetadata, PeerNodeArg } from "../types/types";
+import { database } from "../firebase/firebase";
 import { MdOutlineComputer } from "react-icons/md";
 
-export default function PeerNode({ data, id }: any) {
+export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [isHost, _] = useState<boolean>(data.hostPeer.uid === id);
 
-  function handleClick() {
+  async function handleClick() {
+    let hostPeer: Peer = data.hostPeer;
+    if (data.uid === hostPeer.uid) return;
+
+    if (hostPeer && !hostPeer.hasRtcConnection(data.uid)) {
+      hostPeer.addRtcDataConnection(data.uid);
+      await hostPeer.createOfferAndSetLocalDesc(data.uid);
+      await sendOffer(database, hostPeer.uid, data.uid, hostPeer);
+    }
+
     fileRef.current?.click();
   }
 
-  function handleFileChange() {
-    for (const file of fileRef.current?.files || []) {
-      data.fileTransfer(file,id);
+  async function handleFileChange(e: any) {
+    try {
+      const selectedFile = e.target.files[0];
+      const chunkSize = 64 * 1024;
+      const destPeerUid = id;
+      const hostPeer = data.hostPeer;
+
+      if (selectedFile) {
+        let buffer = await selectedFile.arrayBuffer();
+        let rtcConn = hostPeer.conns.find((conn) => conn.dstId === destPeerUid);
+
+        if (rtcConn) {
+          const metaData: FileMetadata = {
+            filename: selectedFile.name,
+            type: selectedFile.type,
+            size: selectedFile.size,
+          };
+
+          rtcConn.srcDc?.send(JSON.stringify(metaData));
+          while (buffer.byteLength) {
+            const chunk = buffer.slice(0, chunkSize);
+            buffer = buffer.slice(chunkSize, buffer.byteLength);
+
+            rtcConn.srcDc?.send(chunk);
+          }
+
+          rtcConn.srcDc?.send("Done");
+        }
+      }
+    } catch (error) {
+      console.error("Error sending the file", error);
     }
   }
 
@@ -19,23 +60,21 @@ export default function PeerNode({ data, id }: any) {
     <>
       <div
         className={`flex justify-start items-center ${
-          id === "self" ? "flex-col-reverse" : "flex-col"
+          isHost ? "flex-col-reverse" : "flex-col"
         }`}
       >
-        <p className={`${id === "self" ? "text-[#ffa828]" : "text-[#b7ff54]"}`}>
+        <p className={`${isHost ? "text-[#ffa828]" : "text-[#b7ff54]"}`}>
           {data.label}
         </p>
         <div
           onClick={handleClick}
           className={`p-3 rounded-full font-medium hover:cursor-pointer ${
-            id === "self"
+            isHost
               ? "text-[#ffa828] bg-[#413422]"
               : "bg-[#384027] text-[#b7ff54]"
           }`}
         >
-          <MdOutlineComputer
-            className={`${id === "self" ? "text-3xl" : "text-lg"}`}
-          />
+          <MdOutlineComputer className={`${isHost ? "text-3xl" : "text-lg"}`} />
         </div>
         <input
           type="file"
@@ -45,7 +84,7 @@ export default function PeerNode({ data, id }: any) {
         />
       </div>
 
-      {id === "self" ? (
+      {/* {id === "self" ? (
         <Handle
           type="target"
           position={Position.Top}
@@ -63,7 +102,7 @@ export default function PeerNode({ data, id }: any) {
             background: "#ffa828",
           }}
         />
-      )}
+      )} */}
     </>
   );
 }
