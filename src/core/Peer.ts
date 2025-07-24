@@ -117,7 +117,7 @@ class Peer {
           this.chunks.length = 0;
           this.metadata = this.initMetadata();
         } else {
-          if (e.data instanceof ArrayBuffer) {
+          if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
             this.chunks.push(e.data);
           } else {
             this.metadata = JSON.parse(e.data);
