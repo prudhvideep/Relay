@@ -2,7 +2,7 @@ import { faker } from "@faker-js/faker";
 import { FileMetadata, IceCandidate, RTCConn, Sdp } from "../types/types";
 import { sendCandidate } from "./signal";
 import { database } from "../firebase/firebase";
-import { child, Database, get, ref, set } from "firebase/database";
+import { child, get, ref, remove, set } from "firebase/database";
 
 class Peer {
   uid: string;
@@ -20,6 +20,25 @@ class Peer {
     this.metadata = this.initMetadata();
   }
 
+  hasRtcConnection(dstId: string): boolean {
+    return this.conns.length > 0 && this.conns.some((e) => e.dstId === dstId);
+  }
+
+  removeRtcConnection(dstPeerId: string) {
+    const targetConn = this.conns.find((conn) => conn.dstId === dstPeerId);
+    if(targetConn) targetConn.conn?.close();
+
+    this.conns = this.conns.filter((conn) => conn.dstId !== dstPeerId);
+  }
+
+  initMetadata(): FileMetadata {
+    return {
+      filename: "",
+      type: "",
+      size: "",
+    };
+  }
+
   getPeerId(): string {
     let peerId;
     if (!localStorage.getItem("peerId")) {
@@ -33,14 +52,6 @@ class Peer {
     }
 
     return peerId;
-  }
-
-  initMetadata(): FileMetadata {
-    return {
-      filename: "",
-      type: "",
-      size: "",
-    };
   }
 
   saveBlob(blob: Blob, fileName: string) {
@@ -58,6 +69,18 @@ class Peer {
     URL.revokeObjectURL(blobUrl);
   }
 
+  async addPeerToDb() {
+    await set(ref(database, "rooms/" + this.ip + "room/" + this.uid), {
+      uid: this.uid,
+      os: this.os,
+    });
+  }
+
+  async deletePeerFromDb() {
+    const nodeRef = ref(database, "rooms/" + this.ip + "room/" + this.uid);
+    await remove(nodeRef);
+  }
+
   async resolvePeerData() {
     const response = await fetch(`${import.meta.env.VITE_METADATA_URL}`);
 
@@ -66,14 +89,7 @@ class Peer {
     this.os = data?.os;
   }
 
-  async addPeerToDb(database: Database) {
-    await set(ref(database, "rooms/" + this.ip + "room/" + this.uid), {
-      uid: this.uid,
-      os: this.os,
-    });
-  }
-
-  async getPeers(database: Database) {
+  async getPeers() {
     const dbRef = ref(database);
     const snapshot = await get(child(dbRef, "rooms/" + this.ip + "room/"));
 
@@ -81,10 +97,6 @@ class Peer {
       return Object.keys(snapshot.val());
     }
     return [];
-  }
-
-  hasRtcConnection(dstId: string): boolean {
-    return this.conns.length > 0 && this.conns.some((e) => e.dstId === dstId);
   }
 
   async addRtcDataConnection(dstId: string) {
@@ -111,12 +123,13 @@ class Peer {
           const file = new Blob(this.chunks);
           console.log("Received file ", file);
 
-          this.saveBlob(file,this.metadata.filename);
+          this.saveBlob(file, this.metadata.filename);
 
           //Clean out this chunks
           this.chunks.length = 0;
           this.metadata = this.initMetadata();
         } else {
+          // Need to add blob for android
           if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
             this.chunks.push(e.data);
           } else {
@@ -135,6 +148,15 @@ class Peer {
           JSON.stringify(e.candidate),
           this
         );
+      }
+    };
+
+    rtcConn.onconnectionstatechange = async (e: any) => {
+      let connState = e.currentTarget.connectionState;
+      console.log("Connection state ", connState);
+      if (connState === "disconnected" || connState === "failed" || connState === "closed") {
+        rtcConn.close();
+        this.conns = this.conns.filter((conn) => conn.dstId !== dstId);
       }
     };
 

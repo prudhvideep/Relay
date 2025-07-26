@@ -1,26 +1,20 @@
-import {
-  ReactFlow,
-  Background,
-  useNodesState,
-  Node,
-} from "@xyflow/react";
-
-import "@xyflow/react/dist/style.css";
-import { useState } from "react";
-import PeerNode from "./nodes/PeerNode";
 import Peer from "./core/Peer";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import "@xyflow/react/dist/style.css";
+import PeerNode from "./nodes/PeerNode";
 import { database } from "./firebase/firebase";
+import { useQuery } from "@tanstack/react-query";
 import { subscribeToSignals } from "./core/signal";
-import { Database, onChildAdded, ref } from "firebase/database";
+import { ReactFlow, Background, useNodesState, Node } from "@xyflow/react";
+import { Database, onChildAdded, onChildRemoved, ref } from "firebase/database";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
   const [currentPeer, setCurrentPeer] = useState<Peer | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
-  function addNodeToFlow(uid: string, peer : Peer) {
-    if(!uid) return;
+  function addNodeToFlow(uid: string, peer: Peer) {
+    if (!uid) return;
 
     const newNode = {
       id: uid,
@@ -42,15 +36,30 @@ function App() {
     });
   }
 
+  function removeNodeFromFlow(uid: string | undefined) {
+    if (!uid) return;
+
+    setNodes((nodes) => {
+      return nodes.filter((node) => node.id !== uid);
+    });
+  }
+
   async function subscribeRoomUpdates(database: Database, peer: Peer) {
     const roomRef = ref(database, "rooms/" + peer.ip + "room/");
 
     onChildAdded(roomRef, (snapshot) => {
       const data = snapshot.val();
-      if(data?.uid !== peer.uid) {
-        addNodeToFlow(data.uid,peer);
+      if (data?.uid !== peer.uid) {
+        addNodeToFlow(data.uid, peer);
       }
-    })
+    });
+
+    onChildRemoved(roomRef, (snapshot) => {
+      const data = snapshot.val();
+
+      removeNodeFromFlow(data?.uid);
+      peer.removeRtcConnection(data?.uid);
+    });
   }
 
   useQuery({
@@ -62,19 +71,23 @@ function App() {
       await hostPeer.resolvePeerData();
 
       // Get any peers assosiated with the peer
-      const peers = await hostPeer.getPeers(database);
+      const peers = await hostPeer.getPeers();
       for (const val of peers) {
-        addNodeToFlow(val,hostPeer);
+        addNodeToFlow(val, hostPeer);
       }
 
       // Add peer to the realtime database
-      await hostPeer.addPeerToDb(database);
+      await hostPeer.addPeerToDb();
 
       // Subscribe to the updates in the room
       await subscribeRoomUpdates(database, hostPeer);
 
       // Subscribe to signals
-      await subscribeToSignals(database, hostPeer);
+      await subscribeToSignals(hostPeer);
+
+      window.addEventListener("beforeunload", async () => {
+        await hostPeer.deletePeerFromDb();
+      });
 
       setCurrentPeer(hostPeer);
       return hostPeer;

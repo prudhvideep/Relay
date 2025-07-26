@@ -35,7 +35,7 @@ async function processSignal(signal: Signal, hostPeer: Peer) {
   }
 }
 
-export async function subscribeToSignals(database: Database, hostPeer: Peer) {
+export async function subscribeToSignals(hostPeer: Peer) {
   const signalRef = ref(database, "signals/" + hostPeer.ip);
 
   onChildAdded(signalRef, async (snapshot) => {

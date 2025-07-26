@@ -41,10 +41,10 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           };
 
           rtcConn.srcDc?.send(JSON.stringify(metaData));
+
           while (buffer.byteLength) {
             const chunk = buffer.slice(0, chunkSize);
             buffer = buffer.slice(chunkSize, buffer.byteLength);
-
             rtcConn.srcDc?.send(chunk);
           }
 
@@ -72,7 +72,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
             isHost
               ? "text-[#ffa828] bg-[#413422]"
               : "bg-[#384027] text-[#b7ff54]"
-          }`}
+          } `}
         >
           <MdOutlineComputer className={`${isHost ? "text-3xl" : "text-lg"}`} />
         </div>
@@ -83,26 +83,6 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           style={{ display: "none" }}
         />
       </div>
-
-      {/* {id === "self" ? (
-        <Handle
-          type="target"
-          position={Position.Top}
-          isConnectable={true}
-          style={{
-            background: "#b7ff54",
-          }}
-        />
-      ) : (
-        <Handle
-          type="target"
-          position={Position.Bottom}
-          isConnectable={true}
-          style={{
-            background: "#ffa828",
-          }}
-        />
-      )} */}
     </>
   );
 }

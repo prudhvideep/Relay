@@ -1,15 +1,14 @@
 import Peer from "../core/Peer";
 
-export type MessageType = "offer" | "answer" | "broadcast" | "signal" | "ice";
+export type SignalType = "Offer" | "Answer" | "Candidate"; 
 
-export type Message = {
-  type: MessageType;
-  srcId: string;
-  dstId: string;
-  offer?: string;
-  answer?: string;
-  ice?: string;
-  peers?: string[];
+export type IceCandidate = {
+  candidate: string;
+};
+
+export type Sdp = {
+  sdp: string;
+  type: RTCSdpType;
 };
 
 export type FileMetadata = {
@@ -34,15 +33,6 @@ export type Signal = {
   candidate?: string | undefined;
 };
 
-export type IceCandidate = {
-  candidate: string;
-};
-
-export type Sdp = {
-  sdp: string;
-  type: RTCSdpType;
-};
-
 export type PeerNodeArg = {
   id: string;
   data: {
@@ -51,5 +41,3 @@ export type PeerNodeArg = {
     hostPeer: Peer;
   };
 };
-
-export type AddNodeFnType = (uid: string, peer: Peer) => void;
