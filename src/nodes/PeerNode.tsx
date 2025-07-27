@@ -1,9 +1,8 @@
 import Peer from "../core/Peer";
 import { useRef, useState } from "react";
-import { sendOffer } from "../core/signal";
 import { FileMetadata, PeerNodeArg } from "../types/types";
-import { database } from "../firebase/firebase";
 import { MdOutlineComputer } from "react-icons/md";
+import { sendOffer } from "../core/signal";
 
 export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -16,7 +15,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     if (hostPeer && !hostPeer.hasRtcConnection(data.uid)) {
       hostPeer.addRtcDataConnection(data.uid);
       await hostPeer.createOfferAndSetLocalDesc(data.uid);
-      await sendOffer(database, hostPeer.uid, data.uid, hostPeer);
+      await sendOffer(hostPeer.uid, data.uid, hostPeer);
     }
 
     fileRef.current?.click();

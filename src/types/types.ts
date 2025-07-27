@@ -26,7 +26,7 @@ export type RTCConn = {
 };
 
 export type Signal = {
-  type: "Offer" | "Answer" | "Candidate";
+  type: "Offer" | "Answer" | "Candidate" | "Syn" | "Ack";
   srcId: string;
   dstId: string;
   sdp?: Sdp | undefined;
@@ -42,7 +42,3 @@ export type PeerNodeArg = {
   };
 };
 
-export type Message = {
-  type: "Ping" | "Pong" | "Fin" | "Data";
-  data?: ArrayBuffer | Blob | string;
-};

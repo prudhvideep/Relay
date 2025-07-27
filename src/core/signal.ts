@@ -1,7 +1,6 @@
 import Peer from "./Peer";
 import { Sdp, Signal } from "../types/types";
 import {
-  Database,
   onChildAdded,
   push,
   ref,
@@ -10,12 +9,9 @@ import {
 } from "firebase/database";
 import { database } from "../firebase/firebase";
 
-async function processSignal(signal: Signal, hostPeer: Peer) {
+async function processSignal(signal: Signal, hostPeer: Peer, addNodeToFlow : any) {
   //Discard signal from the same source
   if (signal.srcId === hostPeer.uid) return;
-
-  console.log("Processing signal from ", signal.srcId, " type ", signal.type);
-
   switch (signal.type) {
     case "Offer":
       if (!hostPeer.hasRtcConnection(signal.srcId)) {
@@ -24,7 +20,7 @@ async function processSignal(signal: Signal, hostPeer: Peer) {
 
       await hostPeer.setRemoteDesc(signal.srcId, signal.sdp);
       await hostPeer.createAnswerAndSetLocalDesc(signal.srcId);
-      await sendAnswer(database, signal.dstId, signal.srcId, hostPeer);
+      await sendAnswer(signal.dstId, signal.srcId, hostPeer);
       break;
     case "Answer":
       await hostPeer.setRemoteDesc(signal.srcId, signal.sdp);
@@ -32,22 +28,28 @@ async function processSignal(signal: Signal, hostPeer: Peer) {
     case "Candidate":
       await hostPeer.setIceCandidate(signal.srcId, signal.candidate || "");
       break;
+    case "Syn":
+      addNodeToFlow(signal.srcId,hostPeer);
+      await sendAck(hostPeer);
+      break;
+    case "Ack":
+      addNodeToFlow(signal.srcId,hostPeer);
+      break;
   }
 }
 
-export async function subscribeToSignals(hostPeer: Peer) {
+export async function subscribeToSignals(hostPeer: Peer,addNodeToFlow : any) {
   const signalRef = ref(database, "signals/" + hostPeer.ip);
 
   onChildAdded(signalRef, async (snapshot) => {
     const signal = snapshot.val() as Signal;
-    await processSignal(signal, hostPeer);
+    await processSignal(signal, hostPeer, addNodeToFlow);
 
     await remove(snapshot.ref);
   });
 }
 
 export async function sendOffer(
-  database: Database,
   srcId: string,
   dstId: string,
   hostPeer: Peer
@@ -67,7 +69,6 @@ export async function sendOffer(
 }
 
 export async function sendAnswer(
-  database: Database,
   srcId: string,
   dstId: string,
   hostPeer: Peer
@@ -87,7 +88,6 @@ export async function sendAnswer(
 }
 
 export async function sendCandidate(
-  database: Database,
   srcId: string,
   dstId: string,
   candidate: string,
@@ -103,3 +103,30 @@ export async function sendCandidate(
   const signalRef = ref(database, "signals/" + hostPeer.ip);
   await set(push(signalRef), signal);
 }
+
+export async function sendSyn(
+  hostPeer: Peer
+) {
+  let signal: Signal = {
+    type: "Syn",
+    srcId: hostPeer.uid,
+    dstId: "*",
+  };
+
+  const signalRef = ref(database, "signals/" + hostPeer.ip);
+  await set(push(signalRef), signal);
+}
+
+export async function sendAck(
+  hostPeer: Peer
+) {
+  let signal: Signal = {
+    type: "Ack",
+    srcId: hostPeer.uid,
+    dstId: "*",
+  };
+
+  const signalRef = ref(database, "signals/" + hostPeer.ip);
+  await set(push(signalRef), signal);
+}
+

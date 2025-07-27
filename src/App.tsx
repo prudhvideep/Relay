@@ -4,9 +4,9 @@ import "@xyflow/react/dist/style.css";
 import PeerNode from "./nodes/PeerNode";
 import { database } from "./firebase/firebase";
 import { useQuery } from "@tanstack/react-query";
-import { subscribeToSignals } from "./core/signal";
+import { sendSyn, subscribeToSignals } from "./core/signal";
 import { ReactFlow, Background, useNodesState, Node } from "@xyflow/react";
-import { Database, onChildAdded, onChildRemoved, ref } from "firebase/database";
+import { Database, onChildRemoved, ref } from "firebase/database";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
@@ -51,13 +51,6 @@ function App() {
   async function subscribeRoomUpdates(database: Database, peer: Peer) {
     const roomRef = ref(database, "rooms/" + peer.ip + "room/");
 
-    onChildAdded(roomRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data?.uid !== peer.uid) {
-        addNodeToFlow(data.uid, peer);
-      }
-    });
-
     onChildRemoved(roomRef, (snapshot) => {
       const data = snapshot.val();
 
@@ -69,25 +62,27 @@ function App() {
   const { refetch: refetchPeer } = useQuery({
     queryKey: ["curPeerQuery", currentPeer?.uid],
     queryFn: async () => {
+      console.log("Inside the new peer query");
+
       const hostPeer = new Peer();
+
+      // Add the node to the canvas
+      addNodeToFlow(hostPeer.uid, hostPeer);
 
       // Resolve the peer ip, os etc
       await hostPeer.resolvePeerData();
 
-      // Get any peers assosiated with the peer
-      const peers = await hostPeer.getPeers();
-      for (const val of peers) {
-        addNodeToFlow(val, hostPeer);
-      }
-
       // Add peer to the realtime database
       await hostPeer.addPeerToDb();
+
+      // Singnal that a peer got added
+      await sendSyn(hostPeer);
 
       // Subscribe to the updates in the room
       await subscribeRoomUpdates(database, hostPeer);
 
       // Subscribe to signals
-      await subscribeToSignals(hostPeer);
+      await subscribeToSignals(hostPeer, addNodeToFlow);
 
       setCurrentPeer(hostPeer);
       return hostPeer;
@@ -97,7 +92,10 @@ function App() {
 
   return (
     <div className="min-h-screen h-screen flex flex-row bg-[#252423]">
-      <div className="w-full h-full bg-[#2f2e2d]">
+      <div className="absolute w-full h-full bg-[#2f2e2d]">
+        <div className="absolute bg-[#413422] top-4 left-1/2 transform -translate-x-1/2 z-50 text-white text-xl font-semibold p-2 rounded-xl">
+          <p className="text-[#ffa828]">LAN Room</p>
+        </div>
         <ReactFlow
           nodes={nodes}
           nodeTypes={nodeTypes}

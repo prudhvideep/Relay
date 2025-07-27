@@ -147,7 +147,6 @@ class Peer {
     rtcConn.onicecandidate = async (e: any) => {
       if (e.candidate) {
         await sendCandidate(
-          database,
           this.uid,
           dstId,
           JSON.stringify(e.candidate),
