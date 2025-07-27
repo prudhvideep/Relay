@@ -41,14 +41,14 @@ class Peer {
 
   getPeerId(): string {
     let peerId;
-    if (!sessionStorage.getItem("peerId")) {
+    if (!localStorage.getItem("peerId")) {
       peerId = faker.animal.type() + "-" + faker.color.human();
 
       if (peerId) {
-        sessionStorage.setItem("peerId", peerId);
+        localStorage.setItem("peerId", peerId);
       }
     } else {
-      peerId = sessionStorage.getItem("peerId") || "";
+      peerId = localStorage.getItem("peerId") || "";
     }
 
     return peerId;
