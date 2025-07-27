@@ -36,12 +36,16 @@ function App() {
     });
   }
 
-  function removeNodeFromFlow(uid: string | undefined) {
+  async function removeNodeFromFlow(uid: string | undefined) {
     if (!uid) return;
 
     setNodes((nodes) => {
       return nodes.filter((node) => node.id !== uid);
     });
+
+    console.log("Removing the node ", uid);
+
+    if (uid === currentPeer?.uid) await refetchPeer();
   }
 
   async function subscribeRoomUpdates(database: Database, peer: Peer) {
@@ -62,7 +66,7 @@ function App() {
     });
   }
 
-  useQuery({
+  const { refetch: refetchPeer } = useQuery({
     queryKey: ["curPeerQuery", currentPeer?.uid],
     queryFn: async () => {
       const hostPeer = new Peer();
@@ -85,15 +89,9 @@ function App() {
       // Subscribe to signals
       await subscribeToSignals(hostPeer);
 
-      window.addEventListener("beforeunload", async () => {
-        await hostPeer.deletePeerFromDb();
-      });
-
       setCurrentPeer(hostPeer);
       return hostPeer;
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 

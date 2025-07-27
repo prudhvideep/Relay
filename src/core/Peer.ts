@@ -26,7 +26,7 @@ class Peer {
 
   removeRtcConnection(dstPeerId: string) {
     const targetConn = this.conns.find((conn) => conn.dstId === dstPeerId);
-    if(targetConn) targetConn.conn?.close();
+    if (targetConn) targetConn.conn?.close();
 
     this.conns = this.conns.filter((conn) => conn.dstId !== dstPeerId);
   }
@@ -41,14 +41,14 @@ class Peer {
 
   getPeerId(): string {
     let peerId;
-    if (!localStorage.getItem("peerId")) {
+    if (!sessionStorage.getItem("peerId")) {
       peerId = faker.animal.type() + "-" + faker.color.human();
 
       if (peerId) {
-        localStorage.setItem("peerId", peerId);
+        sessionStorage.setItem("peerId", peerId);
       }
     } else {
-      peerId = localStorage.getItem("peerId") || "";
+      peerId = sessionStorage.getItem("peerId") || "";
     }
 
     return peerId;
@@ -76,8 +76,8 @@ class Peer {
     });
   }
 
-  async deletePeerFromDb() {
-    const nodeRef = ref(database, "rooms/" + this.ip + "room/" + this.uid);
+  async deletePeerFromDb(peerId: string) {
+    const nodeRef = ref(database, "rooms/" + this.ip + "room/" + peerId);
     await remove(nodeRef);
   }
 
@@ -99,6 +99,15 @@ class Peer {
     return [];
   }
 
+  async cleanupClosedRtcConn(dstId: string) {
+    const rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+
+    if (rtcConn) {
+      rtcConn.conn.close();
+      await this.deletePeerFromDb(dstId);
+    }
+  }
+
   async addRtcDataConnection(dstId: string) {
     let rtcConn = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -106,18 +115,14 @@ class Peer {
 
     let dc = rtcConn.createDataChannel("dc");
 
-    dc.onopen = () => {
-      console.log("Datachannel opened");
-    };
-
-    dc.onmessage = (e: any) => {
-      console.log("data ---> ", e.data);
+    dc.onclose = async () => {
+      console.log("Data channel closed");
+      await this.cleanupClosedRtcConn(dstId);
     };
 
     rtcConn.ondatachannel = (event) => {
       const receivedChannel = event.channel;
 
-      receivedChannel.onopen = () => console.log("Received datachannel opened");
       receivedChannel.onmessage = (e) => {
         if (e.data === "Done") {
           const file = new Blob(this.chunks);
@@ -154,8 +159,14 @@ class Peer {
     rtcConn.onconnectionstatechange = async (e: any) => {
       let connState = e.currentTarget.connectionState;
       console.log("Connection state ", connState);
-      if (connState === "disconnected" || connState === "failed" || connState === "closed") {
+      if (
+        connState === "disconnected" ||
+        connState === "failed" ||
+        connState === "closed"
+      ) {
         rtcConn.close();
+        console.log("Closing connection");
+        await this.cleanupClosedRtcConn(dstId);
         this.conns = this.conns.filter((conn) => conn.dstId !== dstId);
       }
     };

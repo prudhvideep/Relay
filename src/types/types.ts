@@ -1,6 +1,6 @@
 import Peer from "../core/Peer";
 
-export type SignalType = "Offer" | "Answer" | "Candidate"; 
+export type SignalType = "Offer" | "Answer" | "Candidate";
 
 export type IceCandidate = {
   candidate: string;
@@ -40,4 +40,9 @@ export type PeerNodeArg = {
     label: string;
     hostPeer: Peer;
   };
+};
+
+export type Message = {
+  type: "Ping" | "Pong" | "Fin" | "Data";
+  data?: ArrayBuffer | Blob | string;
 };
