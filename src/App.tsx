@@ -45,8 +45,6 @@ function App() {
       return nodes.filter((node) => node.id !== uid);
     });
 
-    console.log("Removing the node ", uid);
-
     if (uid === currentPeer?.uid) await refetchPeer();
   }
 
@@ -64,7 +62,6 @@ function App() {
   const { refetch: refetchPeer } = useQuery({
     queryKey: ["curPeerQuery", currentPeer?.uid],
     queryFn: async () => {
-      console.log("Inside the new peer query");
 
       const hostPeer = new Peer();
 
