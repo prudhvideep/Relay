@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { sendSyn, subscribeToSignals } from "./core/signal";
 import { ReactFlow, Background, useNodesState, Node } from "@xyflow/react";
 import { Database, onChildRemoved, ref } from "firebase/database";
+import { MdOutlineAdd } from "react-icons/md";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
@@ -95,6 +96,12 @@ function App() {
       <div className="absolute w-full h-full bg-[#2f2e2d]">
         <div className="absolute bg-[#413422] top-4 left-1/2 transform -translate-x-1/2 z-50 text-white text-xl font-semibold p-2 rounded-xl">
           <p className="text-[#ffa828]">LAN Room</p>
+        </div>
+        <div
+          className="absolute bg-[#413422] top-4 right-10 transform -translate-x-1/2 z-50 text-white text-xl font-semibold p-2 rounded-full hover:scale-110 hov
+er:cursor-pointer"
+        >
+          <MdOutlineAdd className="text-2xl font-bold text-[#ffa828]" />
         </div>
         <ReactFlow
           nodes={nodes}

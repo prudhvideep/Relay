@@ -1,8 +1,9 @@
 import Peer from "../core/Peer";
-import { useRef, useState } from "react";
+import { JSX, useRef, useState } from "react";
 import { FileMetadata, PeerNodeArg } from "../types/types";
 import { MdOutlineComputer } from "react-icons/md";
 import { sendOffer } from "../core/signal";
+import { FaAndroid, FaApple, FaWindows } from "react-icons/fa";
 
 export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -19,6 +20,21 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     }
 
     fileRef.current?.click();
+  }
+
+  function renderOsIcon(os: string): JSX.Element {
+    switch (os) {
+      case "Windows":
+        return <FaWindows className={`${isHost ? "text-3xl" : "text-lg"}`} />;
+      case "macOS":
+        return <FaApple className={`${isHost ? "text-3xl" : "text-lg"}`} />;
+      case "Android":
+        return <FaAndroid className={`${isHost ? "text-3xl" : "text-lg"}`} />;
+      default:
+        return (
+          <MdOutlineComputer className={`${isHost ? "text-3xl" : "text-lg"}`} />
+        );
+    }
   }
 
   async function handleFileChange(e: any) {
@@ -73,7 +89,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
               : "bg-[#384027] text-[#b7ff54]"
           } `}
         >
-          <MdOutlineComputer className={`${isHost ? "text-3xl" : "text-lg"}`} />
+          {renderOsIcon(data.hostPeer.os)}
         </div>
         <input
           type="file"
