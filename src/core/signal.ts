@@ -29,11 +29,11 @@ async function processSignal(signal: Signal, hostPeer: Peer, addNodeToFlow : any
       await hostPeer.setIceCandidate(signal.srcId, signal.candidate || "");
       break;
     case "Syn":
-      addNodeToFlow(signal.srcId,hostPeer);
+      addNodeToFlow(signal.srcId,signal.srcOs,hostPeer);
       await sendAck(hostPeer);
       break;
     case "Ack":
-      addNodeToFlow(signal.srcId,hostPeer);
+      addNodeToFlow(signal.srcId,signal.srcOs,hostPeer);
       break;
   }
 }
@@ -42,7 +42,7 @@ export async function subscribeToSignals(hostPeer: Peer,addNodeToFlow : any) {
   const signalRef = ref(database, "signals/" + hostPeer.ip);
 
   onChildAdded(signalRef, async (snapshot) => {
-    const signal = snapshot.val() as Signal;
+    const signal = snapshot.val();
     await processSignal(signal, hostPeer, addNodeToFlow);
 
     await remove(snapshot.ref);
@@ -110,6 +110,7 @@ export async function sendSyn(
   let signal: Signal = {
     type: "Syn",
     srcId: hostPeer.uid,
+    srcOs: hostPeer.os,
     dstId: "*",
   };
 
@@ -123,6 +124,7 @@ export async function sendAck(
   let signal: Signal = {
     type: "Ack",
     srcId: hostPeer.uid,
+    srcOs: hostPeer.os,
     dstId: "*",
   };
 

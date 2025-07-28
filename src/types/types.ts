@@ -28,15 +28,18 @@ export type RTCConn = {
 export type Signal = {
   type: "Offer" | "Answer" | "Candidate" | "Syn" | "Ack";
   srcId: string;
+  srcOs?: string,
   dstId: string;
   sdp?: Sdp | undefined;
   candidate?: string | undefined;
 };
 
+
 export type PeerNodeArg = {
   id: string;
   data: {
     uid: string;
+    os : string
     label: string;
     hostPeer: Peer;
   };

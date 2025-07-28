@@ -87,6 +87,8 @@ class Peer {
     const data = await response.json();
     this.ip = data?.ip;
     this.os = data?.os;
+
+    console.log("Peer data ", data)
   }
 
   async getPeers() {

@@ -89,7 +89,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
               : "bg-[#384027] text-[#b7ff54]"
           } `}
         >
-          {renderOsIcon(data.hostPeer.os)}
+          {renderOsIcon(data.os)}
         </div>
         <input
           type="file"

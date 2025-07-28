@@ -14,7 +14,7 @@ function App() {
   const [currentPeer, setCurrentPeer] = useState<Peer | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
-  function addNodeToFlow(uid: string, peer: Peer) {
+  function addNodeToFlow(uid: string, os: string, peer: Peer) {
     if (!uid) return;
 
     const newNode = {
@@ -23,6 +23,7 @@ function App() {
       position: { x: Math.random() * 250, y: Math.random() * 250 },
       data: {
         uid: uid,
+        os: os,
         label: uid,
         hostPeer: peer,
       },
@@ -67,11 +68,11 @@ function App() {
 
       const hostPeer = new Peer();
 
-      // Add the node to the canvas
-      addNodeToFlow(hostPeer.uid, hostPeer);
-
       // Resolve the peer ip, os etc
       await hostPeer.resolvePeerData();
+
+      // Add the node to the canvas
+      addNodeToFlow(hostPeer.uid, hostPeer.os, hostPeer);
 
       // Add peer to the realtime database
       await hostPeer.addPeerToDb();
