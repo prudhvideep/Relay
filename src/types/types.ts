@@ -11,6 +11,11 @@ export type Sdp = {
   type: RTCSdpType;
 };
 
+export type PeerDescription = {
+  peerId : string,
+  peerName : string,
+}
+
 export type FileMetadata = {
   filename: string;
   type: string;
@@ -18,8 +23,8 @@ export type FileMetadata = {
 };
 
 export type RTCConn = {
-  srcId: string;
-  dstId: string;
+  fromDesc: PeerDescription;
+  toDesc: PeerDescription;
   conn: RTCPeerConnection;
   srcDc?: RTCDataChannel;
   dstDc?: RTCDataChannel;
@@ -27,9 +32,9 @@ export type RTCConn = {
 
 export type Signal = {
   type: "Offer" | "Answer" | "Candidate" | "Syn" | "Ack";
-  srcId: string;
+  fromDesc: PeerDescription;
+  toDesc: PeerDescription;
   srcOs?: string,
-  dstId: string;
   sdp?: Sdp | undefined;
   candidate?: string | undefined;
 };
@@ -38,8 +43,8 @@ export type Signal = {
 export type PeerNodeArg = {
   id: string;
   data: {
-    uid: string;
-    os : string
+    os : string;
+    desc: PeerDescription;
     label: string;
     hostPeer: Peer;
   };

@@ -1,5 +1,5 @@
-import Peer from "./Peer";
-import { Sdp, Signal } from "../types/types";
+import Peer from "../core/Peer";
+import { PeerDescription, Sdp, Signal } from "../types/types";
 import {
   onChildAdded,
   push,
@@ -11,29 +11,31 @@ import { database } from "../firebase/firebase";
 
 async function processSignal(signal: Signal, hostPeer: Peer, addNodeToFlow : any) {
   //Discard signal from the same source
-  if (signal.srcId === hostPeer.uid) return;
+
+  if (signal.fromDesc.peerId === hostPeer.desc.peerId) return;
   switch (signal.type) {
     case "Offer":
-      if (!hostPeer.hasRtcConnection(signal.srcId)) {
-        hostPeer.addRtcDataConnection(signal.srcId);
+      console.log("Received Offer from ", signal.fromDesc.peerName)
+      if (!hostPeer.hasRtcConnection(signal.fromDesc.peerId)) {
+        hostPeer.addRtcDataConnection(signal.fromDesc);
       }
 
-      await hostPeer.setRemoteDesc(signal.srcId, signal.sdp);
-      await hostPeer.createAnswerAndSetLocalDesc(signal.srcId);
-      await sendAnswer(signal.dstId, signal.srcId, hostPeer);
+      await hostPeer.setRemoteDesc(signal.fromDesc, signal.sdp);
+      await hostPeer.createAnswerAndSetLocalDesc(signal.fromDesc);
+      await sendAnswer(signal.toDesc, signal.fromDesc, hostPeer);
       break;
     case "Answer":
-      await hostPeer.setRemoteDesc(signal.srcId, signal.sdp);
+      await hostPeer.setRemoteDesc(signal.fromDesc, signal.sdp);
       break;
     case "Candidate":
-      await hostPeer.setIceCandidate(signal.srcId, signal.candidate || "");
+      await hostPeer.setIceCandidate(signal.fromDesc, signal.candidate || "");
       break;
     case "Syn":
-      addNodeToFlow(signal.srcId,signal.srcOs,hostPeer);
+      addNodeToFlow(signal.fromDesc,signal.srcOs,hostPeer);
       await sendAck(hostPeer);
       break;
     case "Ack":
-      addNodeToFlow(signal.srcId,signal.srcOs,hostPeer);
+      addNodeToFlow(signal.fromDesc,signal.srcOs,hostPeer);
       break;
   }
 }
@@ -50,17 +52,17 @@ export async function subscribeToSignals(hostPeer: Peer,addNodeToFlow : any) {
 }
 
 export async function sendOffer(
-  srcId: string,
-  dstId: string,
+  fromDesc : PeerDescription,
+  toDesc: PeerDescription,
   hostPeer: Peer
 ) {
-  let localDesc = hostPeer.conns.find((conn) => conn.dstId === dstId)?.conn
+  let localDesc = hostPeer.conns.find((conn) => conn.toDesc.peerId === toDesc.peerId)?.conn
     .localDescription;
 
   let signal: Signal = {
     type: "Offer",
-    srcId: srcId,
-    dstId: dstId,
+    fromDesc: fromDesc,
+    toDesc: toDesc,
     sdp: localDesc?.toJSON() as Sdp,
   };
 
@@ -69,17 +71,17 @@ export async function sendOffer(
 }
 
 export async function sendAnswer(
-  srcId: string,
-  dstId: string,
+  fromDesc : PeerDescription,
+  toDesc: PeerDescription,
   hostPeer: Peer
 ) {
-  let localDesc = hostPeer.conns.find((conn) => conn.dstId === dstId)?.conn
+  let localDesc = hostPeer.conns.find((conn) => conn.toDesc.peerId === toDesc.peerId)?.conn
     .localDescription;
 
   let signal: Signal = {
     type: "Answer",
-    srcId: srcId,
-    dstId: dstId,
+    fromDesc: fromDesc,
+    toDesc: toDesc,
     sdp: localDesc?.toJSON() as Sdp,
   };
 
@@ -88,15 +90,15 @@ export async function sendAnswer(
 }
 
 export async function sendCandidate(
-  srcId: string,
-  dstId: string,
+  fromDesc: PeerDescription,
+  toDesc: PeerDescription,
   candidate: string,
   hostPeer: Peer
 ) {
   let signal: Signal = {
     type: "Candidate",
-    srcId: srcId,
-    dstId: dstId,
+    fromDesc: fromDesc,
+    toDesc: toDesc,
     candidate: candidate,
   };
 
@@ -109,9 +111,9 @@ export async function sendSyn(
 ) {
   let signal: Signal = {
     type: "Syn",
-    srcId: hostPeer.uid,
+    fromDesc: hostPeer.desc,
     srcOs: hostPeer.os,
-    dstId: "*",
+    toDesc: {peerId : "*", peerName : "*"},
   };
 
   const signalRef = ref(database, "signals/" + hostPeer.ip);
@@ -123,9 +125,9 @@ export async function sendAck(
 ) {
   let signal: Signal = {
     type: "Ack",
-    srcId: hostPeer.uid,
+    fromDesc: hostPeer.desc,
     srcOs: hostPeer.os,
-    dstId: "*",
+    toDesc: {peerId : "*", peerName : "*"},
   };
 
   const signalRef = ref(database, "signals/" + hostPeer.ip);

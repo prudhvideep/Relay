@@ -1,34 +1,29 @@
 import { faker } from "@faker-js/faker";
-import { FileMetadata, IceCandidate, RTCConn, Sdp } from "../types/types";
-import { sendCandidate } from "./signal";
+import {
+  FileMetadata,
+  IceCandidate,
+  PeerDescription,
+  RTCConn,
+  Sdp,
+} from "../types/types";
+import { sendCandidate } from "../util/signal";
 import { database } from "../firebase/firebase";
 import { child, get, ref, remove, set } from "firebase/database";
 
 class Peer {
-  uid: string;
   ip!: string;
   os!: string;
+  desc: PeerDescription;
   conns!: RTCConn[];
   chunks!: BlobPart[];
   metadata!: FileMetadata;
 
   constructor() {
     // Generate unique peer idReceived signal from
-    this.uid = this.getPeerId();
+    this.desc = this.initPeerDesc();
     this.conns = [];
     this.chunks = [];
     this.metadata = this.initMetadata();
-  }
-
-  hasRtcConnection(dstId: string): boolean {
-    return this.conns.length > 0 && this.conns.some((e) => e.dstId === dstId);
-  }
-
-  removeRtcConnection(dstPeerId: string) {
-    const targetConn = this.conns.find((conn) => conn.dstId === dstPeerId);
-    if (targetConn) targetConn.conn?.close();
-
-    this.conns = this.conns.filter((conn) => conn.dstId !== dstPeerId);
   }
 
   initMetadata(): FileMetadata {
@@ -39,19 +34,41 @@ class Peer {
     };
   }
 
-  getPeerId(): string {
-    let peerId;
-    if (!localStorage.getItem("peerId")) {
-      peerId = faker.animal.type() + "-" + faker.color.human();
+  hasRtcConnection(toPeerId: string): boolean {
+    return this.conns.length > 0 && this.conns.some((e) => e.toDesc.peerId === toPeerId);
+  }
 
-      if (peerId) {
-        localStorage.setItem("peerId", peerId);
-      }
-    } else {
-      peerId = localStorage.getItem("peerId") || "";
+  removeRtcConnection(dstPeerId: string) {
+    const targetConn = this.conns.find((conn) => conn.toDesc.peerId === dstPeerId);
+    if (targetConn) targetConn.conn?.close();
+
+    this.conns = this.conns.filter((conn) => conn.toDesc.peerId !== dstPeerId);
+  }
+
+  generatePeerId(): string {
+    const randId = crypto.randomUUID();
+    return randId;
+  }
+
+  generatePeerName(): string {
+    const peerId = faker.animal.type() + "-" + faker.color.human();
+    return peerId;
+  }
+
+  initPeerDesc(): PeerDescription {
+    if (!localStorage.getItem("peerDesc")) {
+      let desc: PeerDescription = {
+        peerId: this.generatePeerId(),
+        peerName: this.generatePeerName(),
+      };
+
+      localStorage.setItem("peerDesc", JSON.stringify(desc));
+      return desc;
     }
 
-    return peerId;
+    let descStr = localStorage.getItem("peerDesc") || "{}";
+
+    return JSON.parse(descStr) as PeerDescription;
   }
 
   saveBlob(blob: Blob, fileName: string) {
@@ -70,8 +87,8 @@ class Peer {
   }
 
   async addPeerToDb() {
-    await set(ref(database, "rooms/" + this.ip + "room/" + this.uid), {
-      uid: this.uid,
+    await set(ref(database, "rooms/" + this.ip + "room/" + this.desc.peerId), {
+      uid: this.desc.peerId,
       os: this.os,
     });
   }
@@ -88,7 +105,7 @@ class Peer {
     this.ip = data?.ip;
     this.os = data?.os;
 
-    console.log("Peer data ", data)
+    console.log("Peer data ", data);
   }
 
   async getPeers() {
@@ -101,16 +118,16 @@ class Peer {
     return [];
   }
 
-  async cleanupClosedRtcConn(dstId: string) {
-    const rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+  async cleanupClosedRtcConn(toPeerId: string) {
+    const rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerId);
 
     if (rtcConn) {
       rtcConn.conn.close();
-      await this.deletePeerFromDb(dstId);
+      await this.deletePeerFromDb(toPeerId);
     }
   }
 
-  async addRtcDataConnection(dstId: string) {
+  async addRtcDataConnection(toPeerDesc: PeerDescription) {
     let rtcConn = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -119,7 +136,7 @@ class Peer {
 
     dc.onclose = async () => {
       console.log("Data channel closed");
-      await this.cleanupClosedRtcConn(dstId);
+      await this.cleanupClosedRtcConn(toPeerDesc.peerId);
     };
 
     rtcConn.ondatachannel = (event) => {
@@ -148,12 +165,7 @@ class Peer {
 
     rtcConn.onicecandidate = async (e: any) => {
       if (e.candidate) {
-        await sendCandidate(
-          this.uid,
-          dstId,
-          JSON.stringify(e.candidate),
-          this
-        );
+        await sendCandidate(this.desc, toPeerDesc, JSON.stringify(e.candidate), this);
       }
     };
 
@@ -167,14 +179,14 @@ class Peer {
       ) {
         rtcConn.close();
         console.log("Closing connection");
-        await this.cleanupClosedRtcConn(dstId);
-        this.conns = this.conns.filter((conn) => conn.dstId !== dstId);
+        await this.cleanupClosedRtcConn(toPeerDesc.peerId);
+        this.conns = this.conns.filter((conn) => conn.toDesc.peerId !== toPeerDesc.peerId);
       }
     };
 
     const newConn: RTCConn = {
-      srcId: this.uid,
-      dstId: dstId,
+      fromDesc: this.desc,
+      toDesc: toPeerDesc,
       conn: rtcConn,
       srcDc: dc,
     };
@@ -182,8 +194,8 @@ class Peer {
     this.conns.push(newConn);
   }
 
-  async createOfferAndSetLocalDesc(dstId: string) {
-    let rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+  async createOfferAndSetLocalDesc(toPeerDesc: PeerDescription) {
+    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
 
     if (rtcConn) {
       let offer = await rtcConn.conn.createOffer();
@@ -191,8 +203,8 @@ class Peer {
     }
   }
 
-  async createAnswerAndSetLocalDesc(dstId: string) {
-    let rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+  async createAnswerAndSetLocalDesc(toPeerDesc: PeerDescription) {
+    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
 
     if (rtcConn) {
       let answer = await rtcConn.conn.createAnswer();
@@ -200,10 +212,10 @@ class Peer {
     }
   }
 
-  async setRemoteDesc(dstId: string, sdp: Sdp | undefined) {
+  async setRemoteDesc(toPeerDesc: PeerDescription, sdp: Sdp | undefined) {
     if (!sdp) return;
 
-    let rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
 
     if (rtcConn && !rtcConn.conn.remoteDescription) {
       let sdpDesc = new RTCSessionDescription(sdp);
@@ -211,10 +223,10 @@ class Peer {
     }
   }
 
-  async setIceCandidate(dstId: string, candidate: string | undefined) {
+  async setIceCandidate(toPeerDesc: PeerDescription, candidate: string | undefined) {
     if (!candidate) return;
 
-    let rtcConn = this.conns.find((conn) => conn.dstId === dstId);
+    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
 
     if (rtcConn?.conn) {
       let iceCandidate = JSON.parse(candidate) as IceCandidate;

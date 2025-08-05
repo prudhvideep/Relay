@@ -1,40 +1,57 @@
 import Peer from "./core/Peer";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import PeerNode from "./nodes/PeerNode";
 import { database } from "./firebase/firebase";
-import { useQuery } from "@tanstack/react-query";
-import { sendSyn, subscribeToSignals } from "./core/signal";
+import { sendSyn, subscribeToSignals } from "./util/signal";
 import { ReactFlow, Background, useNodesState, Node } from "@xyflow/react";
 import { Database, onChildRemoved, ref } from "firebase/database";
 import { MdOutlineAdd } from "react-icons/md";
+import { layoutNodes } from "./util/laytout";
+import { PeerDescription } from "./types/types";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
   const [currentPeer, setCurrentPeer] = useState<Peer | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
-  function addNodeToFlow(uid: string, os: string, peer: Peer) {
-    if (!uid) return;
+  function addNodeToFlow(desc: PeerDescription, os: string, peer: Peer) {
+    console.log("Inside add node to flow");
+    console.log("Desc ", desc);
+    if (!desc) return;
 
     const newNode = {
-      id: uid,
+      id: desc.peerId,
       type: "peerNode",
       position: { x: Math.random() * 250, y: Math.random() * 250 },
       data: {
-        uid: uid,
         os: os,
-        label: uid,
+        desc: desc,
+        label: desc.peerName,
         hostPeer: peer,
       },
     };
 
     setNodes((nodes) => {
-      const exists = nodes.some((node) => node.id === uid);
+      const nodeExists = nodes.some((node) => node.id === desc.peerId);
+      if (nodeExists) {
+        return nodes.map((node) => {
+          if (node.id === desc.peerId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                label: desc.peerName,
+              },
+            };
+          }
+          return node;
+        });
+      }
 
-      if (exists) return nodes;
+      let modifiedNodes = [...nodes, newNode];
 
-      return [...nodes, newNode];
+      return layoutNodes(modifiedNodes, peer.desc.peerId);
     });
   }
 
@@ -45,7 +62,7 @@ function App() {
       return nodes.filter((node) => node.id !== uid);
     });
 
-    if (uid === currentPeer?.uid) await refetchPeer();
+    if (uid === currentPeer?.desc.peerId) await setUpPeer();
   }
 
   async function subscribeRoomUpdates(database: Database, peer: Peer) {
@@ -59,35 +76,33 @@ function App() {
     });
   }
 
-  const { refetch: refetchPeer } = useQuery({
-    queryKey: ["curPeerQuery", currentPeer?.uid],
-    queryFn: async () => {
+  async function setUpPeer() {
+    const hostPeer = new Peer();
 
-      const hostPeer = new Peer();
+    // Resolve the peer ip, os etc
+    await hostPeer.resolvePeerData();
 
-      // Resolve the peer ip, os etc
-      await hostPeer.resolvePeerData();
+    // Add the node to the canvas
+    addNodeToFlow(hostPeer.desc, hostPeer.os, hostPeer);
 
-      // Add the node to the canvas
-      addNodeToFlow(hostPeer.uid, hostPeer.os, hostPeer);
+    // Add peer to the realtime database
+    await hostPeer.addPeerToDb();
 
-      // Add peer to the realtime database
-      await hostPeer.addPeerToDb();
+    // Singnal that a peer got added
+    await sendSyn(hostPeer);
 
-      // Singnal that a peer got added
-      await sendSyn(hostPeer);
+    // Subscribe to the updates in the room
+    await subscribeRoomUpdates(database, hostPeer);
 
-      // Subscribe to the updates in the room
-      await subscribeRoomUpdates(database, hostPeer);
+    // Subscribe to signals
+    await subscribeToSignals(hostPeer, addNodeToFlow);
 
-      // Subscribe to signals
-      await subscribeToSignals(hostPeer, addNodeToFlow);
+    setCurrentPeer(hostPeer);
+  }
 
-      setCurrentPeer(hostPeer);
-      return hostPeer;
-    },
-    refetchOnWindowFocus: false,
-  });
+  useEffect(() => {
+    setUpPeer();
+  }, []);
 
   return (
     <div className="min-h-screen h-screen flex flex-row bg-[#252423]">
