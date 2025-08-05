@@ -50,3 +50,8 @@ export type PeerNodeArg = {
   };
 };
 
+export type LayoutOptions = {
+  height : number;
+  width : number;
+}
+

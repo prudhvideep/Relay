@@ -4,11 +4,11 @@ import "@xyflow/react/dist/style.css";
 import PeerNode from "./nodes/PeerNode";
 import { database } from "./firebase/firebase";
 import { sendSyn, subscribeToSignals } from "./util/signal";
-import { ReactFlow, Background, useNodesState, Node } from "@xyflow/react";
+import { ReactFlow, Background, useNodesState, Node, BackgroundVariant } from "@xyflow/react";
 import { Database, onChildRemoved, ref } from "firebase/database";
 import { MdOutlineAdd } from "react-icons/md";
 import { layoutNodes } from "./util/laytout";
-import { PeerDescription } from "./types/types";
+import { LayoutOptions, PeerDescription } from "./types/types";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
@@ -16,14 +16,14 @@ function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
   function addNodeToFlow(desc: PeerDescription, os: string, peer: Peer) {
-    console.log("Inside add node to flow");
-    console.log("Desc ", desc);
+    // console.log("Inside add node to flow");
+    // console.log("Desc ", desc);
     if (!desc) return;
 
     const newNode = {
       id: desc.peerId,
       type: "peerNode",
-      position: { x: Math.random() * 250, y: Math.random() * 250 },
+      position: { x: 0, y: 0 },
       data: {
         os: os,
         desc: desc,
@@ -51,7 +51,15 @@ function App() {
 
       let modifiedNodes = [...nodes, newNode];
 
-      return layoutNodes(modifiedNodes, peer.desc.peerId);
+      const reactFlow = document.querySelector(".react-flow")
+      let layoutOptions : LayoutOptions = {height : 1200, width: 500};
+      if(reactFlow) {
+        const {height,width} = reactFlow.getBoundingClientRect();
+        layoutOptions.height = height;
+        layoutOptions.width =width;
+      }
+
+      return layoutNodes(modifiedNodes, peer.desc.peerId,layoutOptions);
     });
   }
 
@@ -123,7 +131,7 @@ er:cursor-pointer"
           proOptions={{ hideAttribution: true }}
           fitView
         >
-          <Background color="#ffa828" />
+          <Background color="#ffa828" variant={BackgroundVariant.Dots}/>
         </ReactFlow>
       </div>
     </div>

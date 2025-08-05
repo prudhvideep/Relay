@@ -1,12 +1,11 @@
 import Peer from "../core/Peer";
+import { FaPencil } from "react-icons/fa6";
 import { JSX, useRef, useState } from "react";
-import { FileMetadata, PeerDescription, PeerNodeArg } from "../types/types";
+import { IoCheckmark } from "react-icons/io5";
 import { MdOutlineComputer } from "react-icons/md";
 import { sendOffer, sendSyn } from "../util/signal";
 import { FaAndroid, FaApple, FaWindows } from "react-icons/fa";
-import { IoCheckmark } from "react-icons/io5";
-import { FaPencil } from "react-icons/fa6";
-
+import { FileMetadata, PeerDescription, PeerNodeArg } from "../types/types";
 export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -18,7 +17,6 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     if (data.desc.peerId === hostPeer.desc.peerId) return;
 
     if (hostPeer && !hostPeer.hasRtcConnection(data.desc.peerId)) {
-      console.log("Added data connection ");
       hostPeer.addRtcDataConnection(data.desc);
       await hostPeer.createOfferAndSetLocalDesc(data.desc);
 

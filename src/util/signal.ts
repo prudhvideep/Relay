@@ -15,7 +15,6 @@ async function processSignal(signal: Signal, hostPeer: Peer, addNodeToFlow : any
   if (signal.fromDesc.peerId === hostPeer.desc.peerId) return;
   switch (signal.type) {
     case "Offer":
-      console.log("Received Offer from ", signal.fromDesc.peerName)
       if (!hostPeer.hasRtcConnection(signal.fromDesc.peerId)) {
         hostPeer.addRtcDataConnection(signal.fromDesc);
       }
