@@ -6,6 +6,11 @@ import { MdOutlineComputer } from "react-icons/md";
 import { sendOffer, sendSyn } from "../util/signal";
 import { FaAndroid, FaApple, FaWindows } from "react-icons/fa";
 import { FileMetadata, PeerDescription, PeerNodeArg } from "../types/types";
+
+
+const CHUNK_SIZE = 16 * 1024; // 16 kb
+const BUFFER_LIMIT = 64 * 1024 // 64 kb
+
 export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +29,12 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     }
 
     fileRef.current?.click();
+  }
+
+  async function waitDuration(durationInMilliSec : number) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, durationInMilliSec)
+    })
   }
 
   async function handlePeerNameChange() {
@@ -71,7 +82,6 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
   async function handleFileChange(e: any) {
     try {
       const selectedFile = e.target.files[0];
-      const chunkSize = 64 * 1024;
       const destPeerUid = id;
       const hostPeer = data.hostPeer;
 
@@ -91,9 +101,15 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           rtcConn.srcDc?.send(JSON.stringify(metaData));
 
           while (buffer.byteLength) {
-            const chunk = buffer.slice(0, chunkSize);
-            buffer = buffer.slice(chunkSize, buffer.byteLength);
-            rtcConn.srcDc?.send(chunk);
+            const chunk = buffer.slice(0, CHUNK_SIZE);
+            buffer = buffer.slice(CHUNK_SIZE, buffer.byteLength);
+
+            if(rtcConn.srcDc?.bufferedAmount || 0 < BUFFER_LIMIT) {
+              rtcConn.srcDc?.send(chunk);
+            } else {
+              // Wait for one millisec
+              await waitDuration(1);
+            }
           }
 
           rtcConn.srcDc?.send("Done");
