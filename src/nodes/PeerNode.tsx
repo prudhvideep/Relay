@@ -7,16 +7,29 @@ import { sendOffer, sendSyn } from "../util/signal";
 import { FaAndroid, FaApple, FaWindows } from "react-icons/fa";
 import { FileMetadata, PeerDescription, PeerNodeArg } from "../types/types";
 
-
 const CHUNK_SIZE = 16 * 1024; // 16 kb
-const BUFFER_LIMIT = 64 * 1024 // 64 kb
+const BUFFER_LIMIT = 64 * 1024; // 64 kb
+const ONE_KB = 1_000;
+const ONE_MB = 1_000_000;
+const TEN_MB = 10_000_000;
 
 export default function PeerNode({ id, data }: PeerNodeArg) {
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const progressBarRef = useRef<HTMLInputElement>(null);
   const [isEditable, setIsEditable] = useState<boolean>(false);
   const [isHost, _] = useState<boolean>(data.hostPeer.desc.peerId === id);
+  
+  function getThrottleFactor(fileSize : number) : number {
+    if(fileSize < 500 * ONE_KB) {
+      return 1;
+    } else if (fileSize > ONE_MB && fileSize <= TEN_MB) {
+      return 10;
+    }
 
+    return 100;
+  }
+ 
   async function handleClick() {
     let hostPeer: Peer = data.hostPeer;
     if (data.desc.peerId === hostPeer.desc.peerId) return;
@@ -31,19 +44,19 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     fileRef.current?.click();
   }
 
-  async function waitDuration(durationInMilliSec : number) {
+  async function waitDuration(durationInMilliSec: number) {
     return new Promise((resolve) => {
-      setTimeout(resolve, durationInMilliSec)
-    })
+      setTimeout(resolve, durationInMilliSec);
+    });
   }
 
   async function handlePeerNameChange() {
     const newName = inputRef.current?.value?.trim();
-    
-    if(newName && newName !== data.label) {
+
+    if (newName && newName !== data.label) {
       data.label = newName;
       updateLocalStorage(newName);
-      
+
       data.hostPeer.desc.peerName = newName;
       await sendSyn(data.hostPeer);
     }
@@ -55,13 +68,13 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
     setIsEditable(true);
   }
 
-  function updateLocalStorage(newPeerName : string) {
-    let newDesc : PeerDescription = {
-      peerId : data.desc.peerId,
-      peerName : newPeerName
-    }
+  function updateLocalStorage(newPeerName: string) {
+    let newDesc: PeerDescription = {
+      peerId: data.desc.peerId,
+      peerName: newPeerName,
+    };
 
-    localStorage.setItem("peerDesc",JSON.stringify(newDesc))
+    localStorage.setItem("peerDesc", JSON.stringify(newDesc));
   }
 
   function renderOsIcon(os: string): JSX.Element {
@@ -99,13 +112,27 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           };
 
           rtcConn.srcDc?.send(JSON.stringify(metaData));
+          let transferredSize = 0;
+          let iteration = 0;
+          const throttleFactor = getThrottleFactor(selectedFile.size);
 
           while (buffer.byteLength) {
+            iteration++;
             const chunk = buffer.slice(0, CHUNK_SIZE);
             buffer = buffer.slice(CHUNK_SIZE, buffer.byteLength);
 
-            if(rtcConn.srcDc?.bufferedAmount || 0 < BUFFER_LIMIT) {
+            if (rtcConn.srcDc?.bufferedAmount || 0 < BUFFER_LIMIT) {
               rtcConn.srcDc?.send(chunk);
+              transferredSize += chunk.byteLength;
+
+              if (iteration % throttleFactor === 0) {
+                if (progressBarRef && progressBarRef.current) {
+                  await waitDuration(0.5);
+              
+                  const progress = (transferredSize / selectedFile.size) * 100;
+                  progressBarRef.current.style.width = `${progress}%`;
+                }
+              }
             } else {
               // Wait for one millisec
               await waitDuration(1);
@@ -113,6 +140,10 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           }
 
           rtcConn.srcDc?.send("Done");
+
+          if (progressBarRef && progressBarRef.current) {
+            progressBarRef.current.style.width = "0%";
+          }
         }
       }
     } catch (error) {
@@ -137,12 +168,14 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
               >
                 {data.label}
               </p>
-              {isHost && <FaPencil
-                onClick={handleEdit}
-                className={`text-sm text-[#b7ff54] hover:cursor-pointer ${
-                  isHost ? "text-[#ffa828]" : "text-[#b7ff54]"
-                }`}
-              />}
+              {isHost && (
+                <FaPencil
+                  onClick={handleEdit}
+                  className={`text-sm text-[#b7ff54] hover:cursor-pointer ${
+                    isHost ? "text-[#ffa828]" : "text-[#b7ff54]"
+                  }`}
+                />
+              )}
             </div>
           )}
           {isEditable && (
@@ -182,6 +215,15 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
+        {!isHost && (
+          <div className="w-full flex justify-start">
+            <div
+              ref={progressBarRef}
+              className="mt-2 h-1 rounded-xl bg-[#b7ff54]"
+              style={{ width: "0%" }}
+            />
+          </div>
+        )}
       </div>
     </>
   );
