@@ -12,7 +12,7 @@ import { LayoutOptions, PeerDescription } from "./types/types";
 
 const nodeTypes = { peerNode: PeerNode };
 function App() {
-  const [currentPeer, setCurrentPeer] = useState<Peer | null>(null);
+  const [_, setCurrentPeer] = useState<Peer | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
   function addNodeToFlow(desc: PeerDescription, os: string, peer: Peer) {
@@ -66,21 +66,26 @@ function App() {
   async function removeNodeFromFlow(uid: string | undefined) {
     if (!uid) return;
 
+    let peerDesc : PeerDescription = JSON.parse(localStorage.getItem("peerDesc") ?? "{}");
+
+    if(peerDesc?.peerId === uid) return;
+
     setNodes((nodes) => {
       return nodes.filter((node) => node.id !== uid);
     });
-
-    if (uid === currentPeer?.desc.peerId) await setUpPeer();
   }
 
   async function subscribeRoomUpdates(database: Database, peer: Peer) {
     const roomRef = ref(database, "rooms/" + peer.ip + "room/");
 
-    onChildRemoved(roomRef, (snapshot) => {
+    onChildRemoved(roomRef,async (snapshot) => {
       const data = snapshot.val();
+      console.log("Data in on child removed ", data);
 
       removeNodeFromFlow(data?.uid);
       peer.removeRtcConnection(data?.uid);
+
+      await sendSyn(peer);
     });
   }
 

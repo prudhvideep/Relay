@@ -140,7 +140,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           }
 
           rtcConn.srcDc?.send("Done");
-
+          
           if (progressBarRef && progressBarRef.current) {
             progressBarRef.current.style.width = "0%";
           }
@@ -162,7 +162,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           {!isEditable && (
             <div className="flex flex-row gap-2 items-center">
               <p
-                className={`w-30 text-center ${
+                className={`w-auto text-center ${
                   isHost ? "text-[#ffa828]" : "text-[#b7ff54]"
                 }`}
               >

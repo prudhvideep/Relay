@@ -11,7 +11,7 @@ export function layoutNodes(
   parentId: string,
   layoutOptions: LayoutOptions
 ): Node[] {
-  console.log("Layout Options ", layoutOptions);
+  // console.log("Layout Options ", layoutOptions);
 
   const hostNode = nodes.find(
     (node) => (node.data.hostPeer as Peer)?.desc.peerId === parentId
