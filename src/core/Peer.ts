@@ -31,15 +31,22 @@ class Peer {
       filename: "",
       type: "",
       size: "",
+      isTranferringFile: false,
+      isReceivingFile: false,
     };
   }
 
   hasRtcConnection(toPeerId: string): boolean {
-    return this.conns.length > 0 && this.conns.some((e) => e.toDesc.peerId === toPeerId);
+    return (
+      this.conns.length > 0 &&
+      this.conns.some((e) => e.toDesc.peerId === toPeerId)
+    );
   }
 
   removeRtcConnection(dstPeerId: string) {
-    const targetConn = this.conns.find((conn) => conn.toDesc.peerId === dstPeerId);
+    const targetConn = this.conns.find(
+      (conn) => conn.toDesc.peerId === dstPeerId
+    );
     if (targetConn) targetConn.conn?.close();
 
     this.conns = this.conns.filter((conn) => conn.toDesc.peerId !== dstPeerId);
@@ -141,29 +148,49 @@ class Peer {
       const receivedChannel = event.channel;
 
       receivedChannel.onmessage = (e) => {
-        if (e.data === "Done") {
-          const file = new Blob(this.chunks);
-          console.log("Received file ", file);
+        try {
+          if (e.data === "Done") {
+            if (this.metadata.isReceivingFile) {
+              const file = new Blob(this.chunks);
+              this.saveBlob(file, this.metadata.filename);
+            }
 
-          this.saveBlob(file, this.metadata.filename);
-
-          //Clean out this chunks
-          this.chunks.length = 0;
-          this.metadata = this.initMetadata();
-        } else {
-          // Need to add blob for android
-          if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
-            this.chunks.push(e.data);
+            // Clean out chunks on done
+            this.chunks.length = 0;
+            this.metadata = this.initMetadata();
           } else {
-            this.metadata = JSON.parse(e.data);
+            // Need to add blob for android
+            if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
+              if (!this.metadata.isReceivingFile) return;
+              this.chunks.push(e.data);
+            } else {
+              if (
+                window.confirm(
+                  `Do you want to receive file from ${toPeerDesc.peerName}?`
+                )
+              ) {
+                this.metadata = JSON.parse(e.data);
+                this.metadata.isReceivingFile = true;
+              } else {
+                this.metadata.isReceivingFile = false;
+              }
+            }
           }
+        } catch (e : any) {
+          console.error("Error on receving the file ", e.message)
+        } finally {
         }
       };
     };
 
     rtcConn.onicecandidate = async (e: any) => {
       if (e.candidate) {
-        await sendCandidate(this.desc, toPeerDesc, JSON.stringify(e.candidate), this);
+        await sendCandidate(
+          this.desc,
+          toPeerDesc,
+          JSON.stringify(e.candidate),
+          this
+        );
       }
     };
 
@@ -178,7 +205,9 @@ class Peer {
         rtcConn.close();
         console.log("Closing connection");
         await this.cleanupClosedRtcConn(toPeerDesc.peerId);
-        this.conns = this.conns.filter((conn) => conn.toDesc.peerId !== toPeerDesc.peerId);
+        this.conns = this.conns.filter(
+          (conn) => conn.toDesc.peerId !== toPeerDesc.peerId
+        );
       }
     };
 
@@ -193,7 +222,9 @@ class Peer {
   }
 
   async createOfferAndSetLocalDesc(toPeerDesc: PeerDescription) {
-    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
+    let rtcConn = this.conns.find(
+      (conn) => conn.toDesc.peerId === toPeerDesc.peerId
+    );
 
     if (rtcConn) {
       let offer = await rtcConn.conn.createOffer();
@@ -202,7 +233,9 @@ class Peer {
   }
 
   async createAnswerAndSetLocalDesc(toPeerDesc: PeerDescription) {
-    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
+    let rtcConn = this.conns.find(
+      (conn) => conn.toDesc.peerId === toPeerDesc.peerId
+    );
 
     if (rtcConn) {
       let answer = await rtcConn.conn.createAnswer();
@@ -213,7 +246,9 @@ class Peer {
   async setRemoteDesc(toPeerDesc: PeerDescription, sdp: Sdp | undefined) {
     if (!sdp) return;
 
-    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
+    let rtcConn = this.conns.find(
+      (conn) => conn.toDesc.peerId === toPeerDesc.peerId
+    );
 
     if (rtcConn && !rtcConn.conn.remoteDescription) {
       let sdpDesc = new RTCSessionDescription(sdp);
@@ -221,10 +256,15 @@ class Peer {
     }
   }
 
-  async setIceCandidate(toPeerDesc: PeerDescription, candidate: string | undefined) {
+  async setIceCandidate(
+    toPeerDesc: PeerDescription,
+    candidate: string | undefined
+  ) {
     if (!candidate) return;
 
-    let rtcConn = this.conns.find((conn) => conn.toDesc.peerId === toPeerDesc.peerId);
+    let rtcConn = this.conns.find(
+      (conn) => conn.toDesc.peerId === toPeerDesc.peerId
+    );
 
     if (rtcConn?.conn) {
       let iceCandidate = JSON.parse(candidate) as IceCandidate;

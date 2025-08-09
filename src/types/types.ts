@@ -12,14 +12,16 @@ export type Sdp = {
 };
 
 export type PeerDescription = {
-  peerId : string,
-  peerName : string,
-}
+  peerId: string;
+  peerName: string;
+};
 
 export type FileMetadata = {
   filename: string;
   type: string;
   size: string;
+  isTranferringFile?: boolean;
+  isReceivingFile?: boolean;
 };
 
 export type RTCConn = {
@@ -34,16 +36,15 @@ export type Signal = {
   type: "Offer" | "Answer" | "Candidate" | "Syn" | "Ack";
   fromDesc: PeerDescription;
   toDesc: PeerDescription;
-  srcOs?: string,
+  srcOs?: string;
   sdp?: Sdp | undefined;
   candidate?: string | undefined;
 };
 
-
 export type PeerNodeArg = {
   id: string;
   data: {
-    os : string;
+    os: string;
     desc: PeerDescription;
     label: string;
     hostPeer: Peer;
@@ -51,7 +52,6 @@ export type PeerNodeArg = {
 };
 
 export type LayoutOptions = {
-  height : number;
-  width : number;
-}
-
+  height: number;
+  width: number;
+};

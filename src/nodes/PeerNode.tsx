@@ -5,7 +5,12 @@ import { IoCheckmark } from "react-icons/io5";
 import { MdOutlineComputer } from "react-icons/md";
 import { sendOffer, sendSyn } from "../util/signal";
 import { FaAndroid, FaApple, FaWindows } from "react-icons/fa";
-import { FileMetadata, PeerDescription, PeerNodeArg } from "../types/types";
+import {
+  FileMetadata,
+  PeerDescription,
+  PeerNodeArg,
+  RTCConn,
+} from "../types/types";
 
 const CHUNK_SIZE = 16 * 1024; // 16 kb
 const BUFFER_LIMIT = 64 * 1024; // 64 kb
@@ -19,9 +24,9 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
   const progressBarRef = useRef<HTMLInputElement>(null);
   const [isEditable, setIsEditable] = useState<boolean>(false);
   const [isHost, _] = useState<boolean>(data.hostPeer.desc.peerId === id);
-  
-  function getThrottleFactor(fileSize : number) : number {
-    if(fileSize < 500 * ONE_KB) {
+
+  function getThrottleFactor(fileSize: number): number {
+    if (fileSize < 500 * ONE_KB) {
       return 1;
     } else if (fileSize > ONE_MB && fileSize <= TEN_MB) {
       return 10;
@@ -29,7 +34,39 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
 
     return 100;
   }
- 
+
+  // Escaping the type system for buffer
+  // As it is coerced to blob on Android.
+  // TODO Add an union type for the buffer
+  async function sendFileChunks(rtcConn: RTCConn, buffer: any, size: number) {
+    let transferredSize = 0;
+    let iteration = 0;
+    const throttleFactor = getThrottleFactor(size);
+
+    while (buffer.byteLength) {
+      iteration++;
+      const chunk = buffer.slice(0, CHUNK_SIZE);
+      buffer = buffer.slice(CHUNK_SIZE, buffer.byteLength);
+
+      if (rtcConn.srcDc?.bufferedAmount || 0 < BUFFER_LIMIT) {
+        rtcConn.srcDc?.send(chunk);
+        transferredSize += chunk.byteLength;
+
+        if (iteration % throttleFactor === 0) {
+          if (progressBarRef && progressBarRef.current) {
+            await waitDuration(0.5);
+
+            const progress = (transferredSize / size) * 100;
+            progressBarRef.current.style.width = `${progress}%`;
+          }
+        }
+      } else {
+        // Wait for one millisec for the buffer to breathe
+        await waitDuration(1);
+      }
+    }
+  }
+
   async function handleClick() {
     let hostPeer: Peer = data.hostPeer;
     if (data.desc.peerId === hostPeer.desc.peerId) return;
@@ -109,40 +146,23 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
             filename: selectedFile.name,
             type: selectedFile.type,
             size: selectedFile.size,
+            isTranferringFile: true,
           };
 
-          rtcConn.srcDc?.send(JSON.stringify(metaData));
-          let transferredSize = 0;
-          let iteration = 0;
-          const throttleFactor = getThrottleFactor(selectedFile.size);
+          try {
+            rtcConn.srcDc?.send(JSON.stringify(metaData));
 
-          while (buffer.byteLength) {
-            iteration++;
-            const chunk = buffer.slice(0, CHUNK_SIZE);
-            buffer = buffer.slice(CHUNK_SIZE, buffer.byteLength);
+            await sendFileChunks(rtcConn, buffer, selectedFile.size);
+          } catch (e: any) {
+            console.error("Error sending the file ", e.message);
+          } finally {
+            // Adding an exit for cleaner completion
+            rtcConn.srcDc?.send("Done");
+            await waitDuration(1);
 
-            if (rtcConn.srcDc?.bufferedAmount || 0 < BUFFER_LIMIT) {
-              rtcConn.srcDc?.send(chunk);
-              transferredSize += chunk.byteLength;
-
-              if (iteration % throttleFactor === 0) {
-                if (progressBarRef && progressBarRef.current) {
-                  await waitDuration(0.5);
-              
-                  const progress = (transferredSize / selectedFile.size) * 100;
-                  progressBarRef.current.style.width = `${progress}%`;
-                }
-              }
-            } else {
-              // Wait for one millisec
-              await waitDuration(1);
+            if (progressBarRef && progressBarRef.current) {
+              progressBarRef.current.style.width = "0%";
             }
-          }
-
-          rtcConn.srcDc?.send("Done");
-          
-          if (progressBarRef && progressBarRef.current) {
-            progressBarRef.current.style.width = "0%";
           }
         }
       }
@@ -216,7 +236,7 @@ export default function PeerNode({ id, data }: PeerNodeArg) {
           style={{ display: "none" }}
         />
         {!isHost && (
-          <div className="w-full flex justify-start">
+          <div id="progressBar" className="w-full flex justify-start">
             <div
               ref={progressBarRef}
               className="mt-2 h-1 rounded-xl bg-[#b7ff54]"
