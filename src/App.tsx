@@ -16,8 +16,6 @@ function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
   function addNodeToFlow(desc: PeerDescription, os: string, peer: Peer) {
-    // console.log("Inside add node to flow");
-    // console.log("Desc ", desc);
     if (!desc) return;
 
     const newNode = {
