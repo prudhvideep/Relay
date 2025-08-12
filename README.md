@@ -14,12 +14,25 @@
 
 **WebRtc** requires a signalling mechanism for the peers to discover each other. In this example, I used firebase to implement signalling between the peers, but this can be done with any implementation. 
 
-## Demo
+<bl/>
 
-<video src="./assets/demo.gif"></video>
+<div align="center">
+  <img src="./assets/demo.gif" alt="Demo" />
+</div>
+
+## Development Setup
+
+To run this application, you need `bun` installed. Clone the repository and run
+```
+bun intall 
+bun dev
+```
+
+For the application to work as is with the firebase signalling, you need to setup a firebase project and provide all the required environment variables. 
+
+**Note:** You can implement your own signalling. This may require a little bit of work as the code is tightly coupled to firebase signalling implementation.
 
 [realy-site]: https://relay-ubs.pages.dev/
 
-<!-- marketing -->
 [image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png 
 [image-head]: ./assets/Relay.jpg
