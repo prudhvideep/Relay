@@ -13,6 +13,9 @@ async function processSignal(signal: Signal, hostPeer: Peer, addNodeToFlow : any
   //Discard signal from the same source
 
   if (signal.fromDesc.peerId === hostPeer.desc.peerId) return;
+
+  console.log("Processing the signal ",signal);
+  
   switch (signal.type) {
     case "Offer":
       if (!hostPeer.hasRtcConnection(signal.fromDesc.peerId)) {
